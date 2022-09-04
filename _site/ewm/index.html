@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>A practical exponentially-weighted mean/variance algorithm – matteosantama – A place for my thoughts</title>
+    <!-- Begin Jekyll SEO tag v2.8.0 -->
+<meta name="generator" content="Jekyll v4.2.2" />
+<meta property="og:title" content="A practical exponentially-weighted mean/variance algorithm" />
+<meta name="author" content="Matteo Santamaria" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Back in August, I started contributing to polars, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks here). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting the exponentially-weighted variance that polars computes differs significantly from the one pandas produces. Intrigued, I began looking for the source of the disparity." />
+<meta property="og:description" content="Back in August, I started contributing to polars, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks here). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting the exponentially-weighted variance that polars computes differs significantly from the one pandas produces. Intrigued, I began looking for the source of the disparity." />
+<link rel="canonical" href="http://localhost:4000/ewm/" />
+<meta property="og:url" content="http://localhost:4000/ewm/" />
+<meta property="og:site_name" content="matteosantama" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2022-09-03T00:00:00-07:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="A practical exponentially-weighted mean/variance algorithm" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Matteo Santamaria"},"dateModified":"2022-09-03T00:00:00-07:00","datePublished":"2022-09-03T00:00:00-07:00","description":"Back in August, I started contributing to polars, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks here). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting the exponentially-weighted variance that polars computes differs significantly from the one pandas produces. Intrigued, I began looking for the source of the disparity.","headline":"A practical exponentially-weighted mean/variance algorithm","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/ewm/"},"url":"http://localhost:4000/ewm/"}</script>
+<!-- End Jekyll SEO tag -->
+
+    <meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+
+<meta property="og:description" content="Back in August, I started contributing to polars, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks here). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting the exponentially-weighted variance that polars computes differs significantly from the one pandas produces. Intrigued, I began looking for the source of the disparity.
+" />
+
+<meta name="author" content="matteosantama" />
+
+
+<meta property="og:title" content="A practical exponentially-weighted mean/variance algorithm" />
+<meta property="twitter:title" content="A practical exponentially-weighted mean/variance algorithm" />
+
+
+
+<meta property="og:image" content="http://localhost:4000/images/closeup.png"/>
+<meta property="twitter:image" content="http://localhost:4000/images/closeup.png"/>
+
+
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+
+
+    <link rel="stylesheet" type="text/css" href="/assets/style.css" />
+    <link rel="alternate" type="application/rss+xml" title="matteosantama - A place for my thoughts" href="/feed.xml" />
+    <link rel="canonical" href="http://localhost:4000/ewm/" />
+  
+    <script src="https://kit.fontawesome.com/ddbb484ead.js" crossorigin="anonymous"></script>
+  </head>
+
+  <body>
+    <div id="bar"></div>
+    <div class="wrapper-container">
+      <div class="wrapper-masthead">
+        <div class="container">
+          <header class="masthead clearfix">
+            <a href="/" class="site-avatar"><img src="/images/closeup.png" alt="" /></a>
+
+            <div class="site-info">
+              <h1 class="site-name"><a href="/">matteosantama</a></h1>
+              <p class="site-description">A place for my thoughts</p>
+            </div>
+
+            <nav>
+              <a href="/">Home</a>
+              <a href="/about">About</a>
+              <a href="/search">Search</a>
+              <a href="/archive">Archive</a>
+            </nav>
+          </header>
+        </div>
+      </div>
+
+      <div class="wrapper-main">
+        <div id="main" role="main" class="container">
+          <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript"></script>
+
+<article class="post detailed">
+  <h1>A practical exponentially-weighted mean/variance algorithm</h1>
+
+  <div>
+    <p class="author_title">Matteo Santamaria  ·  September  3, 2022</p>
+    
+    <div class="post-tags">
+      
+      
+        <a href="/categories/#python">python</a>
+        &nbsp;
+      
+        <a href="/categories/#statistics">statistics</a>
+        
+      
+    </div>
+  </div>
+
+  <div class="entry">
+    <p>Back in August, I started contributing to <code class="language-plaintext highlighter-rouge">polars</code>, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks <a href="https://www.pola.rs/benchmarks.html">here</a>). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting the exponentially-weighted variance that <code class="language-plaintext highlighter-rouge">polars</code> computes differs significantly from the one <code class="language-plaintext highlighter-rouge">pandas</code> produces. Intrigued, I began looking for the source of the disparity.</p>
+
+<h2 id="the-diagnosis">The diagnosis</h2>
+
+<p>I first replicated the user’s issue on my machine</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;&gt;&gt;</span> <span class="n">pl</span><span class="p">.</span><span class="n">Series</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">3.</span><span class="p">]).</span><span class="n">ewm_var</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">adjust</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+<span class="n">shape</span><span class="p">:</span> <span class="p">(</span><span class="mi">3</span><span class="p">,)</span>
+<span class="n">Series</span><span class="p">:</span> <span class="s">''</span> <span class="p">[</span><span class="n">f64</span><span class="p">]</span>
+<span class="p">[</span>
+	<span class="mf">0.0</span>
+	<span class="mf">0.25</span>
+	<span class="mf">0.6875</span>
+<span class="p">]</span>
+
+<span class="o">&gt;&gt;&gt;</span> <span class="n">pd</span><span class="p">.</span><span class="n">Series</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">3.</span><span class="p">]).</span><span class="n">ewm</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">adjust</span><span class="o">=</span><span class="bp">False</span><span class="p">).</span><span class="n">var</span><span class="p">()</span>
+<span class="mi">0</span>    <span class="n">NaN</span>
+<span class="mi">1</span>    <span class="mf">0.5</span>
+<span class="mi">2</span>    <span class="mf">1.1</span>
+<span class="n">dtype</span><span class="p">:</span> <span class="n">float64</span>
+</code></pre></div></div>
+
+<p>Looking more closely at the <code class="language-plaintext highlighter-rouge">polars</code> and <code class="language-plaintext highlighter-rouge">pandas</code> function signatures, I noticed that <code class="language-plaintext highlighter-rouge">polars</code> lacked a <code class="language-plaintext highlighter-rouge">bias</code> parameter (ignore the <code class="language-plaintext highlighter-rouge">adjust</code> parameter for now, we will get to that). And indeed, this was the problem!</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;&gt;&gt;</span> <span class="n">pd</span><span class="p">.</span><span class="n">Series</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">3.</span><span class="p">]).</span><span class="n">ewm</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">adjust</span><span class="o">=</span><span class="bp">False</span><span class="p">).</span><span class="n">var</span><span class="p">(</span><span class="n">bias</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+<span class="mi">0</span>    <span class="n">NaN</span>
+<span class="mi">1</span>    <span class="mf">0.5</span>
+<span class="mi">2</span>    <span class="mf">1.1</span>
+<span class="n">dtype</span><span class="p">:</span> <span class="n">float64</span>
+
+<span class="o">&gt;&gt;&gt;</span> <span class="n">pd</span><span class="p">.</span><span class="n">Series</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">3.</span><span class="p">]).</span><span class="n">ewm</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">).</span><span class="n">var</span><span class="p">(</span><span class="n">bias</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="mi">0</span>    <span class="mf">0.0000</span>
+<span class="mi">1</span>    <span class="mf">0.2500</span>
+<span class="mi">2</span>    <span class="mf">0.6875</span>
+<span class="n">dtype</span><span class="p">:</span> <span class="n">float64</span>
+</code></pre></div></div>
+
+<p>With <code class="language-plaintext highlighter-rouge">adjust=False</code>, <code class="language-plaintext highlighter-rouge">polars</code> apparently computed a <strong>biased</strong> variance by default, whereas <code class="language-plaintext highlighter-rouge">pandas</code> returned an unbiased estimator. But the <code class="language-plaintext highlighter-rouge">adjust</code> parameter proved to be significant too. When <code class="language-plaintext highlighter-rouge">adjust=True</code>, the <code class="language-plaintext highlighter-rouge">polars</code> results were entirely incorrect.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;&gt;&gt;</span> <span class="n">pl</span><span class="p">.</span><span class="n">Series</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">3.</span><span class="p">]).</span><span class="n">ewm_var</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">adjust</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="n">shape</span><span class="p">:</span> <span class="p">(</span><span class="mi">3</span><span class="p">,)</span>
+<span class="n">Series</span><span class="p">:</span> <span class="s">''</span> <span class="p">[</span><span class="n">f64</span><span class="p">]</span>
+<span class="p">[</span>
+	<span class="mf">0.0</span>
+	<span class="mf">0.25</span>
+	<span class="mf">0.569444</span>
+<span class="p">]</span>
+
+<span class="o">&gt;&gt;&gt;</span> <span class="n">pd</span><span class="p">.</span><span class="n">Series</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">3.</span><span class="p">]).</span><span class="n">ewm</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">adjust</span><span class="o">=</span><span class="bp">True</span><span class="p">).</span><span class="n">var</span><span class="p">(</span><span class="n">bias</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+<span class="mi">0</span>         <span class="n">NaN</span>
+<span class="mi">1</span>    <span class="mf">0.500000</span>
+<span class="mi">2</span>    <span class="mf">0.928571</span>
+<span class="n">dtype</span><span class="p">:</span> <span class="n">float64</span>
+
+<span class="o">&gt;&gt;&gt;</span> <span class="n">pd</span><span class="p">.</span><span class="n">Series</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">3.</span><span class="p">]).</span><span class="n">ewm</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">adjust</span><span class="o">=</span><span class="bp">True</span><span class="p">).</span><span class="n">var</span><span class="p">(</span><span class="n">bias</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="mi">0</span>    <span class="mf">0.000000</span>
+<span class="mi">1</span>    <span class="mf">0.222222</span>
+<span class="mi">2</span>    <span class="mf">0.530612</span>
+<span class="n">dtype</span><span class="p">:</span> <span class="n">float64</span>
+</code></pre></div></div>
+
+<p>Clearly this needed to be fixed, but implementing a correct variance algorithm would first require a foray in the mathematics of exponential weights.</p>
+
+<h2 id="exponentially-weighted-mean">Exponentially-weighted mean</h2>
+
+<p>Given data points \(x_i\) and weights \(w_i\) for \(i \in \{0, 1, \dots, n\}\), the general formula for a weighted mean \(\mu\) is given by</p>
+
+\[\mu := \frac{\sum_0^n w_i x_i}{\sum_0^n w_i}\]
+
+<p>If the data points are ordered (in time, perhaps) we might want to compute the weighted mean over an expanding window. With some additional notation, we can identify a \(\mu_j\) at each observation \(x_j : j \in \{0, 1, \dots, n\}\), where \(\mu_j\) is the weighted mean of all prior observations \(x_{i \leq j}\). As our window expands, and more data points are considered, the weight corresponding to a particular \(x_i\) will vary, so it is wise to index the weights by \((j)\) as well.</p>
+
+\[\mu_j := \frac{\sum_{i=0}^j w^{(j)}_i x_i}{\sum_{i=0}^j w^{(j)}_i} = \frac{\sum_{i=0}^j w^{(j)}_i x_i}{W_j}\]
+
+<p>where I’ve defined \(W_j := \sum_i w_i^{(j)}\).</p>
+
+<p>Naively computing a \(j\)-term sum at each step is too costly if we can avoid it. In order to efficiently compute all the \(\mu_j\) in an online fashion, I will derive a recurrence relation that suggests an \(O(n)\) algorithm. From the definition of \(\mu_j\), it is readily apparent that</p>
+
+\[W_{j + 1} \mu_{j + 1} = \sum_{i=0}^{j + 1} w_i^{(j + 1)} x_i = \sum_{i=0}^{j} w_i^{(j + 1)} x_i + w_{j + 1}^{(j + 1)} x_{j + 1}\]
+
+\[\implies \mu_{j + 1} = \frac{1}{W_{j + 1}} \left[  \sum_{i=0}^{j} w_i^{(j + 1)} x_i + w_{j + 1}^{(j + 1)} x_{j + 1} \right]\]
+
+<p>At this point, though, we lack a crucial relationship between \(w_i^{(j + 1)}\) and \(w_i^{(j)}\) that must be resolved.</p>
+
+<p>It is important to note that until now, I’ve discussed an <em>arbitrary</em> weighting scheme, ie. I have not yet used any properties of the weights themselves, but I will now restrict my analysis to an exponential weighting scheme with parameter \(\alpha \in (0, 1)\).</p>
+
+<h3 id="the-unadjusted-case">The unadjusted case</h3>
+
+<p>The standard exponentially-weighted mean formula is given by the pair of equations</p>
+
+\[\mu_0 = x_0 \\
+\mu_j = (1 - \alpha) \mu_{j - 1} + \alpha x_j\]
+
+<p>which, when expanded out, yield</p>
+
+\[\mu_0 = x_0 \\
+\mu_j = (1 - \alpha)^j x_0 + \alpha \sum_{i = 1}^j (1 - \alpha)^{j - i} x_i\]
+
+<p>for finite \(j\). This equation has a remarkable property, namely the weights sum to \(1\) for all \(j\).</p>
+
+\[W_j = (1 - \alpha)^j + \alpha \sum_{i = 1}^j (1 - \alpha)^{j - i} = 1\]
+
+<p>This weighting scheme is what we will call the “unadjusted” exponential weightings.</p>
+
+<h3 id="the-adjusted-case">The adjusted case</h3>
+
+<p>There is another way to specify the weights in an exponentially-weighted mean. Starting with the definition</p>
+
+\[\mu_j = (1 - \alpha) \mu_{j - 1} + \alpha x_j\]
+
+<p>we can write</p>
+
+\[\mu_j = \alpha x_j + \alpha (1 - \alpha) x_{j-1} + \alpha (1-\alpha)^2x_{j - 2} + \dots\]
+
+<p>Assuming an infinite number of data points, the general form of the weights is</p>
+
+\[w_i^{(j)} = \alpha (1 - \alpha)^{j - i}\]
+
+<p>However, note that</p>
+
+\[W_j = \sum_{i=0}^j w_i^{(j)} = \alpha \sum_{i=0}^j (1 - \alpha)^{j - i} &lt; 1\]
+
+<p>Since our weights no longer sum to \(1\), we must normalize the weights and divide by \(W_j\)</p>
+
+\[\mu_j = \frac{\alpha}{W_j} \sum_{i=0}^j (1 - \alpha)^{j-i} x_i = \frac{x_j + (1 - \alpha) x_{j-1} + \dots + (1 - \alpha)^{j} x_0}{1 + (1 - \alpha) + \dots + (1 - \alpha)^{j}}\]
+
+<p>When computed this way, \(\mu_j\) is called the “adjusted” exponentially-weighted mean.</p>
+
+<h3 id="an-incremental-algorithm">An incremental algorithm</h3>
+
+<p>With these defintions in hand, we can again consider the equation</p>
+
+\[\mu_{j + 1} = \frac{1}{W_{j + 1}} \left[  \sum_{i=0}^{j} w_i^{(j + 1)} x_i + w_{j + 1}^{(j + 1)} x_{j + 1} \right]\]
+
+<p>I have shown that for both adjusted an unadjusted variants,</p>
+
+\[w_{i}^{(j + 1)} = (1 - \alpha) w_{i}^{(j)} : i \leq j\]
+
+<p>and for \(i = j + 1\),</p>
+
+\[w_{j+1}^{(j+1)} = \begin{cases}
+\alpha &amp; \leftarrow\mathrm{unadjusted} \\
+1 &amp; \leftarrow \mathrm{adjusted} \\
+\end{cases}\]
+
+<p>\(W_{j + 1}\) is easily computed by the recurrence</p>
+
+\[W_{j + 1} = \sum_{i=0}^j w_i^{j+1} + w_{j + 1}^{(j + 1)} = (1 - \alpha) W_{j} + w_{j + 1}^{(j + 1)}\]
+
+<p>(although it is worth reminding the reader that in the unadjusted case this computation is strictly unnecessary as the weights always sum to \(1\)). Lastly, we derive an important important identity:</p>
+
+\[\sum_{i = 0}^j w_i^{(j + 1)} x_i =\left( W_{j + 1} - w_{j + 1}^{(j + 1)} \right) \mu_j\]
+
+<p>Putting the various identities together and working through the algebra, I am now able to write down the one-step recurrence relation</p>
+
+\[\mu_{j + 1} = \frac{w_{j + 1}^{(j+1)}}{W_{j+1}} \left( x_{j + 1} - \mu_j \right) + \mu_j\]
+
+<h2 id="exponentially-weighted-variance">Exponentially-weighted variance</h2>
+
+<p>With a firm understanding of the mathematics underlying the exponentially-weighted <em>mean</em>, we are now ready to analyze the exponentially-weighted <em>variance</em>.</p>
+
+<p>The general formula for a weighted variance \(\sigma^2\) is given by</p>
+
+\[\sigma^2 = \frac{1}{W_n} \sum_{i=0}^n w_i \left( x_i - \mu \right)^2\]
+
+<p>as we did with the mean, we can compute a weighted variance at each \(j \in \{0, 1, \dots, n\}\) by</p>
+
+\[\sigma_j^2 = \frac{1}{W_j} \sum_{i=0}^j w_i^{(j)} \left( x_i - \mu_j \right)^2\]
+
+<h2 id="an-incremental-algorithm-1">An incremental algorithm</h2>
+
+<p>To design an efficient algorithm for computing \(\sigma_j^2\), I start with some useful, easily derived, identities</p>
+
+\[x_i - \mu_j = ( x_i - \mu_{j - 1} ) - \frac{w_j^{(j)}}{W_j} \left( x_j - \mu_{j-1} \right)\]
+
+<p>which for \(i = j\) can be written</p>
+
+\[x_j - \mu_j = \frac{W_j - w_j^j}{W_j} \left( x_j - \mu_{j-1} \right)\]
+
+<p>We are thus interested in solving</p>
+
+\[\sigma_j^2 = \frac{1}{W_j} \underbrace{\sum_{i=0}^{j-1} w_i^{(j)} \left[ ( x_i - \mu_{j - 1} ) - \frac{w_j^{(j)}}{W_j} \left( x_j - \mu_{j-1} \right) \right]^2}_\theta + \frac{ w_j^{(j)} }{W_j} \left[ \frac{W_j - w_j^j}{W_j} \left( x_j - \mu_{j-1} \right)  \right]^2\]
+
+<p>The section I’ve indentified as \(\theta\) can be expressed as</p>
+
+\[\theta = \sum_{i=0}^{j-1}w_i^{(j)} \left[ \left( x_i - \mu_{j-1} \right)^2 - 2 \frac{w_j^{(j)}}{W_j} \left( x_i - \mu_{j-1} \right) \left( x_j - \mu_{j - 1} \right) + \left( \frac{w_j^{(j)}}{W_j} \right)^2 \left( x_j - \mu_{j-1} \right)^2  \right]\]
+
+<p>If you consider each of these terms separately, you will find</p>
+
+\[\sum_{i=0}^{j-1} w_i^{(j)} \left( x_i - \mu_{j - 1} \right)^2 = \left( W_j - w_j^{(j)} \right) \sigma_{j-1}^2\]
+
+\[\sum_{i=0}^{j-1} w_i^{(j)} \frac{w_j^{(x)}}{W_j} \left( x_i - \mu_{j-1} \right) \left( x_j - \mu_{j-1} \right) = 0\]
+
+\[\sum_{i=0}^{j-1} w_i^{(j)} \left( \frac{w_j^{(j)}}{W_j} \right)^2 \left( x_j - \mu_{j-1} \right)^2 = \left( \frac{w_j^{(j)}}{W_j} \right)^2 \left( x_j - \mu_{j-1} \right)^2 \left( W_j - w_j^{(j)} \right)\]
+
+<p>which, after working through the math, implies</p>
+
+\[\sigma_j^2 = \left( 1 - \frac{w_j^{(j)}}{W_j} \right) \left[ \sigma_{j-1}^2 + \frac{w_j^{(j)}}{W_j} \left( x_j - \mu_{j-1} \right)^2 \right]\]
+
+<p>This is hugely important, as it suggests that at any step \(j\) we don’t have to traverse all prior observations to compute \(\mu_j\).</p>
+
+<h3 id="biased-ness">Biased-ness</h3>
+
+<p>If we pause to realize that \(\sigma_j^2\) is only a sample estimate for the population parameter \(\sigma^2\), we can formalize the relationship between \(\sigma_j^2\) and \(\sigma^2\). If we define</p>
+
+\[\theta_j = \sum_{i=0}^{j} \left[ w_i^{(j)} \right]^2\]
+
+<p>we can then compute</p>
+
+\[\mathbf{E} [ \sigma_j^2 ] = \frac{1}{W_j} \sum_{i=0}^j w_i^{(j)} \left( \mathbf{E} \left[ \left( x_i - \mu_j \right)^2 \right] \right) = \left( 1 - \frac{\theta_j}{W_j^2} \right) \sigma^2\]
+
+<p>To derive this, it is useful to note that</p>
+
+\[\mathbf{E}[ x_i^2 ] = \mu^2 + \sigma^2 \\
+\mathbf{E}[ x_i \mu_j ] = \mu^2 + \frac{\sigma^2}{W_j} w_i^{(j)} \\
+\mathbf{E}[ \mu_j^2 ] = \mu^2 + \frac{\sigma^2 \theta_j}{W_j^2}\]
+
+\[\implies \mathbf{E} \left[ \left( x_i - \mu_j \right)^2 \right] = \sigma^2 - 2 \frac{w_i^{(j)}}{W_j} \sigma^2 + \frac{\theta_j}{W_j^2} \sigma^2\]
+
+<p>In order to produce an unbiased estimate of \(\sigma^2\), we must therefore compute</p>
+
+\[\left( 1 - \frac{\theta_j}{W_j^2} \right)^{-1} \sigma_j^2\]
+
+<h2 id="a-practical-meanvariance-algorithm">A practical mean/variance algorithm</h2>
+
+<p>I now present the algorithm in its entirety:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">exponentially_weighted</span><span class="p">(</span>
+    <span class="n">xs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">alpha</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">adjust</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span> <span class="n">bias</span><span class="p">:</span> <span class="nb">bool</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]]:</span>
+    <span class="s">"""Compute and return the exponentially-weighted (mean, variance)."""</span>
+    <span class="k">assert</span> <span class="mi">0</span> <span class="o">&lt;</span> <span class="n">alpha</span> <span class="o">&lt;</span> <span class="mi">1</span>
+    
+    <span class="k">if</span> <span class="n">adjust</span><span class="p">:</span>
+        <span class="n">wgt</span><span class="p">,</span> <span class="n">wgt_sum</span><span class="p">,</span> <span class="n">wgt_sum_sqr</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># NOTE: we must ensure that `wgt_sum` and `wgt_sum_sqr` are
+</span>        <span class="c1"># equal to one in the first iteration
+</span>        <span class="n">wgt</span><span class="p">,</span> <span class="n">wgt_sum</span><span class="p">,</span> <span class="n">wgt_sum_sqr</span> <span class="o">=</span> <span class="n">alpha</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">alpha</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span><span class="p">)</span>
+    
+    <span class="n">result</span> <span class="o">=</span> <span class="p">{</span><span class="s">"mean"</span><span class="p">:</span> <span class="p">[],</span> <span class="s">"var"</span><span class="p">:</span> <span class="p">[]}</span>
+    
+    <span class="n">mean</span> <span class="o">=</span> <span class="n">xs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">var</span> <span class="o">=</span> <span class="mi">0</span>
+        
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">xs</span><span class="p">):</span>
+        <span class="n">wgt_sum</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span><span class="p">)</span> <span class="o">*</span> <span class="n">wgt_sum</span> <span class="o">+</span> <span class="n">wgt</span>
+        <span class="n">wgt_sum_sqr</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">wgt_sum_sqr</span> <span class="o">+</span> <span class="n">wgt</span> <span class="o">**</span> <span class="mi">2</span>
+        
+        <span class="n">diff</span> <span class="o">=</span> <span class="n">x</span> <span class="o">-</span> <span class="n">mean</span>
+        <span class="n">ratio</span> <span class="o">=</span> <span class="n">wgt</span> <span class="o">/</span> <span class="n">wgt_sum</span>
+        
+        <span class="n">mean</span> <span class="o">=</span> <span class="n">mean</span> <span class="o">+</span> <span class="n">diff</span> <span class="o">*</span> <span class="n">ratio</span>
+        <span class="n">var</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">ratio</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">var</span> <span class="o">+</span> <span class="n">ratio</span> <span class="o">*</span> <span class="n">diff</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+        
+        <span class="c1"># NOTE: the i == 0 condition prevents a ZeroDivisionError
+</span>        <span class="k">if</span> <span class="n">bias</span> <span class="ow">or</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">bias_correction</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">bias_correction</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">wgt_sum_sqr</span> <span class="o">/</span> <span class="p">(</span><span class="n">wgt_sum</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+        
+        <span class="n">result</span><span class="p">[</span><span class="s">"mean"</span><span class="p">].</span><span class="n">append</span><span class="p">(</span><span class="n">mean</span><span class="p">)</span>
+        <span class="n">result</span><span class="p">[</span><span class="s">"var"</span><span class="p">].</span><span class="n">append</span><span class="p">(</span><span class="n">var</span> <span class="o">/</span> <span class="n">bias_correction</span><span class="p">)</span>
+        
+    <span class="k">return</span> <span class="n">result</span>
+</code></pre></div></div>
+
+<p>Note that both <code class="language-plaintext highlighter-rouge">polars</code> and <code class="language-plaintext highlighter-rouge">pandas</code> provide options for dealing with missing values; this simple implementation puts that issue aside. For a more robust Rust implementation, see my merge request <a href="https://github.com/pola-rs/polars/pull/4636">here</a>.</p>
+
+  </div>
+
+  <div>
+    <p><span class="share-box">Share:</span> <a href="http://twitter.com/share?text=A practical exponentially-weighted mean/variance algorithm&url=http://localhost:4000/ewm/" target="_blank">Twitter</a>, <a href="https://www.facebook.com/sharer.php?u=http://localhost:4000/ewm/" target="_blank">Facebook</a></p>
+  </div>
+
+  <!--<div class="date">
+    Written on September  3, 2022
+  </div>-->
+</article>
+
+        </div>
+      </div>
+
+      <div class="wrapper-footer">
+        <div class="container">
+          <footer class="footer">
+            <a href="https://github.com/matteosantama" class="fa-brands fa-square-github fa-lg"></a>
+            <a href="https://www.linkedin.com/in/matteo-santamaria-ba0005108/" class="fa-brands fa-linkedin fa-lg"></a>
+            <a href="https://twitter.com/matteosantama" class="fa-brands fa-square-twitter fa-lg"></a>
+          </footer>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

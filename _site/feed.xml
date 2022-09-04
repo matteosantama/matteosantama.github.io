@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.2.2">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2022-09-03T17:32:58-07:00</updated><id>http://localhost:4000/feed.xml</id><title type="html">matteosantama</title><subtitle>A place for my thoughts</subtitle><author><name>Matteo Santamaria</name></author><entry><title type="html">A practical exponentially-weighted mean/variance algorithm</title><link href="http://localhost:4000/ewm/" rel="alternate" type="text/html" title="A practical exponentially-weighted mean/variance algorithm" /><published>2022-09-03T00:00:00-07:00</published><updated>2022-09-03T00:00:00-07:00</updated><id>http://localhost:4000/ewm</id><content type="html" xml:base="http://localhost:4000/ewm/">&lt;p&gt;Back in August, I started contributing to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt;, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks &lt;a href=&quot;https://www.pola.rs/benchmarks.html&quot;&gt;here&lt;/a&gt;). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting the exponentially-weighted variance that &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; computes differs significantly from the one &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pandas&lt;/code&gt; produces. Intrigued, I began looking for the source of the disparity.&lt;/p&gt;
+
+&lt;h2 id=&quot;the-diagnosis&quot;&gt;The diagnosis&lt;/h2&gt;
+
+&lt;p&gt;I first replicated the user’s issue on my machine&lt;/p&gt;
+
+&lt;div class=&quot;language-python highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;pl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Series&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;([&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;1.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;2.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;3.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ewm_var&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;0.5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;adjust&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;False&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;shape&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;Series&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&apos;&apos;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;f64&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;
+	&lt;span class=&quot;mf&quot;&gt;0.0&lt;/span&gt;
+	&lt;span class=&quot;mf&quot;&gt;0.25&lt;/span&gt;
+	&lt;span class=&quot;mf&quot;&gt;0.6875&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;
+
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;pd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Series&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;([&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;1.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;2.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;3.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ewm&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;0.5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;adjust&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;False&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;var&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;    &lt;span class=&quot;n&quot;&gt;NaN&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;    &lt;span class=&quot;mf&quot;&gt;0.5&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;    &lt;span class=&quot;mf&quot;&gt;1.1&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;dtype&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;float64&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Looking more closely at the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pandas&lt;/code&gt; function signatures, I noticed that &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; lacked a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;bias&lt;/code&gt; parameter (ignore the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;adjust&lt;/code&gt; parameter for now, we will get to that). And indeed, this was the problem!&lt;/p&gt;
+
+&lt;div class=&quot;language-python highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;pd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Series&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;([&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;1.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;2.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;3.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ewm&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;0.5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;adjust&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;False&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;var&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;bias&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;False&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;    &lt;span class=&quot;n&quot;&gt;NaN&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;    &lt;span class=&quot;mf&quot;&gt;0.5&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;    &lt;span class=&quot;mf&quot;&gt;1.1&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;dtype&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;float64&lt;/span&gt;
+
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;pd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Series&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;([&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;1.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;2.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;3.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ewm&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;0.5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;var&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;bias&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;True&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;    &lt;span class=&quot;mf&quot;&gt;0.0000&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;    &lt;span class=&quot;mf&quot;&gt;0.2500&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;    &lt;span class=&quot;mf&quot;&gt;0.6875&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;dtype&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;float64&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;With &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;adjust=False&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; apparently computed a &lt;strong&gt;biased&lt;/strong&gt; variance by default, whereas &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pandas&lt;/code&gt; returned an unbiased estimator. But the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;adjust&lt;/code&gt; parameter proved to be significant too. When &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;adjust=True&lt;/code&gt;, the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; results were entirely incorrect.&lt;/p&gt;
+
+&lt;div class=&quot;language-python highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;pl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Series&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;([&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;1.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;2.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;3.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ewm_var&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;0.5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;adjust&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;True&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;shape&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;Series&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&apos;&apos;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;f64&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;
+	&lt;span class=&quot;mf&quot;&gt;0.0&lt;/span&gt;
+	&lt;span class=&quot;mf&quot;&gt;0.25&lt;/span&gt;
+	&lt;span class=&quot;mf&quot;&gt;0.569444&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;
+
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;pd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Series&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;([&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;1.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;2.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;3.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ewm&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;0.5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;adjust&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;True&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;var&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;bias&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;False&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;         &lt;span class=&quot;n&quot;&gt;NaN&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;    &lt;span class=&quot;mf&quot;&gt;0.500000&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;    &lt;span class=&quot;mf&quot;&gt;0.928571&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;dtype&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;float64&lt;/span&gt;
+
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;pd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Series&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;([&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;1.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;2.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;3.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ewm&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;0.5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;adjust&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;True&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;var&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;bias&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;True&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;    &lt;span class=&quot;mf&quot;&gt;0.000000&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;    &lt;span class=&quot;mf&quot;&gt;0.222222&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;    &lt;span class=&quot;mf&quot;&gt;0.530612&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;dtype&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;float64&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Clearly this needed to be fixed, but implementing a correct variance algorithm would first require a foray in the mathematics of exponential weights.&lt;/p&gt;
+
+&lt;h2 id=&quot;exponentially-weighted-mean&quot;&gt;Exponentially-weighted mean&lt;/h2&gt;
+
+&lt;p&gt;Given data points \(x_i\) and weights \(w_i\) for \(i \in \{0, 1, \dots, n\}\), the general formula for a weighted mean \(\mu\) is given by&lt;/p&gt;
+
+\[\mu := \frac{\sum_0^n w_i x_i}{\sum_0^n w_i}\]
+
+&lt;p&gt;If the data points are ordered (in time, perhaps) we might want to compute the weighted mean over an expanding window. With some additional notation, we can identify a \(\mu_j\) at each observation \(x_j : j \in \{0, 1, \dots, n\}\), where \(\mu_j\) is the weighted mean of all prior observations \(x_{i \leq j}\). As our window expands, and more data points are considered, the weight corresponding to a particular \(x_i\) will vary, so it is wise to index the weights by \((j)\) as well.&lt;/p&gt;
+
+\[\mu_j := \frac{\sum_{i=0}^j w^{(j)}_i x_i}{\sum_{i=0}^j w^{(j)}_i} = \frac{\sum_{i=0}^j w^{(j)}_i x_i}{W_j}\]
+
+&lt;p&gt;where I’ve defined \(W_j := \sum_i w_i^{(j)}\).&lt;/p&gt;
+
+&lt;p&gt;Naively computing a \(j\)-term sum at each step is too costly if we can avoid it. In order to efficiently compute all the \(\mu_j\) in an online fashion, I will derive a recurrence relation that suggests an \(O(n)\) algorithm. From the definition of \(\mu_j\), it is readily apparent that&lt;/p&gt;
+
+\[W_{j + 1} \mu_{j + 1} = \sum_{i=0}^{j + 1} w_i^{(j + 1)} x_i = \sum_{i=0}^{j} w_i^{(j + 1)} x_i + w_{j + 1}^{(j + 1)} x_{j + 1}\]
+
+\[\implies \mu_{j + 1} = \frac{1}{W_{j + 1}} \left[  \sum_{i=0}^{j} w_i^{(j + 1)} x_i + w_{j + 1}^{(j + 1)} x_{j + 1} \right]\]
+
+&lt;p&gt;At this point, though, we lack a crucial relationship between \(w_i^{(j + 1)}\) and \(w_i^{(j)}\) that must be resolved.&lt;/p&gt;
+
+&lt;p&gt;It is important to note that until now, I’ve discussed an &lt;em&gt;arbitrary&lt;/em&gt; weighting scheme, ie. I have not yet used any properties of the weights themselves, but I will now restrict my analysis to an exponential weighting scheme with parameter \(\alpha \in (0, 1)\).&lt;/p&gt;
+
+&lt;h3 id=&quot;the-unadjusted-case&quot;&gt;The unadjusted case&lt;/h3&gt;
+
+&lt;p&gt;The standard exponentially-weighted mean formula is given by the pair of equations&lt;/p&gt;
+
+\[\mu_0 = x_0 \\
+\mu_j = (1 - \alpha) \mu_{j - 1} + \alpha x_j\]
+
+&lt;p&gt;which, when expanded out, yield&lt;/p&gt;
+
+\[\mu_0 = x_0 \\
+\mu_j = (1 - \alpha)^j x_0 + \alpha \sum_{i = 1}^j (1 - \alpha)^{j - i} x_i\]
+
+&lt;p&gt;for finite \(j\). This equation has a remarkable property, namely the weights sum to \(1\) for all \(j\).&lt;/p&gt;
+
+\[W_j = (1 - \alpha)^j + \alpha \sum_{i = 1}^j (1 - \alpha)^{j - i} = 1\]
+
+&lt;p&gt;This weighting scheme is what we will call the “unadjusted” exponential weightings.&lt;/p&gt;
+
+&lt;h3 id=&quot;the-adjusted-case&quot;&gt;The adjusted case&lt;/h3&gt;
+
+&lt;p&gt;There is another way to specify the weights in an exponentially-weighted mean. Starting with the definition&lt;/p&gt;
+
+\[\mu_j = (1 - \alpha) \mu_{j - 1} + \alpha x_j\]
+
+&lt;p&gt;we can write&lt;/p&gt;
+
+\[\mu_j = \alpha x_j + \alpha (1 - \alpha) x_{j-1} + \alpha (1-\alpha)^2x_{j - 2} + \dots\]
+
+&lt;p&gt;Assuming an infinite number of data points, the general form of the weights is&lt;/p&gt;
+
+\[w_i^{(j)} = \alpha (1 - \alpha)^{j - i}\]
+
+&lt;p&gt;However, note that&lt;/p&gt;
+
+\[W_j = \sum_{i=0}^j w_i^{(j)} = \alpha \sum_{i=0}^j (1 - \alpha)^{j - i} &amp;lt; 1\]
+
+&lt;p&gt;Since our weights no longer sum to \(1\), we must normalize the weights and divide by \(W_j\)&lt;/p&gt;
+
+\[\mu_j = \frac{\alpha}{W_j} \sum_{i=0}^j (1 - \alpha)^{j-i} x_i = \frac{x_j + (1 - \alpha) x_{j-1} + \dots + (1 - \alpha)^{j} x_0}{1 + (1 - \alpha) + \dots + (1 - \alpha)^{j}}\]
+
+&lt;p&gt;When computed this way, \(\mu_j\) is called the “adjusted” exponentially-weighted mean.&lt;/p&gt;
+
+&lt;h3 id=&quot;an-incremental-algorithm&quot;&gt;An incremental algorithm&lt;/h3&gt;
+
+&lt;p&gt;With these defintions in hand, we can again consider the equation&lt;/p&gt;
+
+\[\mu_{j + 1} = \frac{1}{W_{j + 1}} \left[  \sum_{i=0}^{j} w_i^{(j + 1)} x_i + w_{j + 1}^{(j + 1)} x_{j + 1} \right]\]
+
+&lt;p&gt;I have shown that for both adjusted an unadjusted variants,&lt;/p&gt;
+
+\[w_{i}^{(j + 1)} = (1 - \alpha) w_{i}^{(j)} : i \leq j\]
+
+&lt;p&gt;and for \(i = j + 1\),&lt;/p&gt;
+
+\[w_{j+1}^{(j+1)} = \begin{cases}
+\alpha &amp;amp; \leftarrow\mathrm{unadjusted} \\
+1 &amp;amp; \leftarrow \mathrm{adjusted} \\
+\end{cases}\]
+
+&lt;p&gt;\(W_{j + 1}\) is easily computed by the recurrence&lt;/p&gt;
+
+\[W_{j + 1} = \sum_{i=0}^j w_i^{j+1} + w_{j + 1}^{(j + 1)} = (1 - \alpha) W_{j} + w_{j + 1}^{(j + 1)}\]
+
+&lt;p&gt;(although it is worth reminding the reader that in the unadjusted case this computation is strictly unnecessary as the weights always sum to \(1\)). Lastly, we derive an important important identity:&lt;/p&gt;
+
+\[\sum_{i = 0}^j w_i^{(j + 1)} x_i =\left( W_{j + 1} - w_{j + 1}^{(j + 1)} \right) \mu_j\]
+
+&lt;p&gt;Putting the various identities together and working through the algebra, I am now able to write down the one-step recurrence relation&lt;/p&gt;
+
+\[\mu_{j + 1} = \frac{w_{j + 1}^{(j+1)}}{W_{j+1}} \left( x_{j + 1} - \mu_j \right) + \mu_j\]
+
+&lt;h2 id=&quot;exponentially-weighted-variance&quot;&gt;Exponentially-weighted variance&lt;/h2&gt;
+
+&lt;p&gt;With a firm understanding of the mathematics underlying the exponentially-weighted &lt;em&gt;mean&lt;/em&gt;, we are now ready to analyze the exponentially-weighted &lt;em&gt;variance&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;The general formula for a weighted variance \(\sigma^2\) is given by&lt;/p&gt;
+
+\[\sigma^2 = \frac{1}{W_n} \sum_{i=0}^n w_i \left( x_i - \mu \right)^2\]
+
+&lt;p&gt;as we did with the mean, we can compute a weighted variance at each \(j \in \{0, 1, \dots, n\}\) by&lt;/p&gt;
+
+\[\sigma_j^2 = \frac{1}{W_j} \sum_{i=0}^j w_i^{(j)} \left( x_i - \mu_j \right)^2\]
+
+&lt;h2 id=&quot;an-incremental-algorithm-1&quot;&gt;An incremental algorithm&lt;/h2&gt;
+
+&lt;p&gt;To design an efficient algorithm for computing \(\sigma_j^2\), I start with some useful, easily derived, identities&lt;/p&gt;
+
+\[x_i - \mu_j = ( x_i - \mu_{j - 1} ) - \frac{w_j^{(j)}}{W_j} \left( x_j - \mu_{j-1} \right)\]
+
+&lt;p&gt;which for \(i = j\) can be written&lt;/p&gt;
+
+\[x_j - \mu_j = \frac{W_j - w_j^j}{W_j} \left( x_j - \mu_{j-1} \right)\]
+
+&lt;p&gt;We are thus interested in solving&lt;/p&gt;
+
+\[\sigma_j^2 = \frac{1}{W_j} \underbrace{\sum_{i=0}^{j-1} w_i^{(j)} \left[ ( x_i - \mu_{j - 1} ) - \frac{w_j^{(j)}}{W_j} \left( x_j - \mu_{j-1} \right) \right]^2}_\theta + \frac{ w_j^{(j)} }{W_j} \left[ \frac{W_j - w_j^j}{W_j} \left( x_j - \mu_{j-1} \right)  \right]^2\]
+
+&lt;p&gt;The section I’ve indentified as \(\theta\) can be expressed as&lt;/p&gt;
+
+\[\theta = \sum_{i=0}^{j-1}w_i^{(j)} \left[ \left( x_i - \mu_{j-1} \right)^2 - 2 \frac{w_j^{(j)}}{W_j} \left( x_i - \mu_{j-1} \right) \left( x_j - \mu_{j - 1} \right) + \left( \frac{w_j^{(j)}}{W_j} \right)^2 \left( x_j - \mu_{j-1} \right)^2  \right]\]
+
+&lt;p&gt;If you consider each of these terms separately, you will find&lt;/p&gt;
+
+\[\sum_{i=0}^{j-1} w_i^{(j)} \left( x_i - \mu_{j - 1} \right)^2 = \left( W_j - w_j^{(j)} \right) \sigma_{j-1}^2\]
+
+\[\sum_{i=0}^{j-1} w_i^{(j)} \frac{w_j^{(x)}}{W_j} \left( x_i - \mu_{j-1} \right) \left( x_j - \mu_{j-1} \right) = 0\]
+
+\[\sum_{i=0}^{j-1} w_i^{(j)} \left( \frac{w_j^{(j)}}{W_j} \right)^2 \left( x_j - \mu_{j-1} \right)^2 = \left( \frac{w_j^{(j)}}{W_j} \right)^2 \left( x_j - \mu_{j-1} \right)^2 \left( W_j - w_j^{(j)} \right)\]
+
+&lt;p&gt;which, after working through the math, implies&lt;/p&gt;
+
+\[\sigma_j^2 = \left( 1 - \frac{w_j^{(j)}}{W_j} \right) \left[ \sigma_{j-1}^2 + \frac{w_j^{(j)}}{W_j} \left( x_j - \mu_{j-1} \right)^2 \right]\]
+
+&lt;p&gt;This is hugely important, as it suggests that at any step \(j\) we don’t have to traverse all prior observations to compute \(\mu_j\).&lt;/p&gt;
+
+&lt;h3 id=&quot;biased-ness&quot;&gt;Biased-ness&lt;/h3&gt;
+
+&lt;p&gt;If we pause to realize that \(\sigma_j^2\) is only a sample estimate for the population parameter \(\sigma^2\), we can formalize the relationship between \(\sigma_j^2\) and \(\sigma^2\). If we define&lt;/p&gt;
+
+\[\theta_j = \sum_{i=0}^{j} \left[ w_i^{(j)} \right]^2\]
+
+&lt;p&gt;we can then compute&lt;/p&gt;
+
+\[\mathbf{E} [ \sigma_j^2 ] = \frac{1}{W_j} \sum_{i=0}^j w_i^{(j)} \left( \mathbf{E} \left[ \left( x_i - \mu_j \right)^2 \right] \right) = \left( 1 - \frac{\theta_j}{W_j^2} \right) \sigma^2\]
+
+&lt;p&gt;To derive this, it is useful to note that&lt;/p&gt;
+
+\[\mathbf{E}[ x_i^2 ] = \mu^2 + \sigma^2 \\
+\mathbf{E}[ x_i \mu_j ] = \mu^2 + \frac{\sigma^2}{W_j} w_i^{(j)} \\
+\mathbf{E}[ \mu_j^2 ] = \mu^2 + \frac{\sigma^2 \theta_j}{W_j^2}\]
+
+\[\implies \mathbf{E} \left[ \left( x_i - \mu_j \right)^2 \right] = \sigma^2 - 2 \frac{w_i^{(j)}}{W_j} \sigma^2 + \frac{\theta_j}{W_j^2} \sigma^2\]
+
+&lt;p&gt;In order to produce an unbiased estimate of \(\sigma^2\), we must therefore compute&lt;/p&gt;
+
+\[\left( 1 - \frac{\theta_j}{W_j^2} \right)^{-1} \sigma_j^2\]
+
+&lt;h2 id=&quot;a-practical-meanvariance-algorithm&quot;&gt;A practical mean/variance algorithm&lt;/h2&gt;
+
+&lt;p&gt;I now present the algorithm in its entirety:&lt;/p&gt;
+
+&lt;div class=&quot;language-python highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;exponentially_weighted&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;xs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;list&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;float&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;],&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;float&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;adjust&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;bool&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;bias&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;bool&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&amp;gt;&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;dict&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;str&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;list&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;float&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]:&lt;/span&gt;
+    &lt;span class=&quot;s&quot;&gt;&quot;&quot;&quot;Compute and return the exponentially-weighted (mean, variance).&quot;&quot;&quot;&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;assert&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;
+    
+    &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;adjust&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;wgt&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;wgt_sum&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;wgt_sum_sqr&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;c1&quot;&gt;# NOTE: we must ensure that `wgt_sum` and `wgt_sum_sqr` are
+&lt;/span&gt;        &lt;span class=&quot;c1&quot;&gt;# equal to one in the first iteration
+&lt;/span&gt;        &lt;span class=&quot;n&quot;&gt;wgt&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;wgt_sum&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;wgt_sum_sqr&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;/&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    
+    &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;mean&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[],&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;var&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[]}&lt;/span&gt;
+    
+    &lt;span class=&quot;n&quot;&gt;mean&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;xs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;var&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;
+        
+    &lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;enumerate&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;xs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;wgt_sum&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;wgt_sum&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;wgt&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;wgt_sum_sqr&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;**&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;wgt_sum_sqr&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;wgt&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;**&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;
+        
+        &lt;span class=&quot;n&quot;&gt;diff&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;mean&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;ratio&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;wgt&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;/&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;wgt_sum&lt;/span&gt;
+        
+        &lt;span class=&quot;n&quot;&gt;mean&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;mean&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;diff&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ratio&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;var&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ratio&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;var&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ratio&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;diff&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;**&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+        
+        &lt;span class=&quot;c1&quot;&gt;# NOTE: the i == 0 condition prevents a ZeroDivisionError
+&lt;/span&gt;        &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;bias&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;or&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;n&quot;&gt;bias_correction&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;n&quot;&gt;bias_correction&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;wgt_sum_sqr&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;/&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;wgt_sum&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;**&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+        
+        &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;mean&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;].&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;append&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;mean&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;var&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;].&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;append&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;var&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;/&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;bias_correction&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+        
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Note that both &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pandas&lt;/code&gt; provide options for dealing with missing values; this simple implementation puts that issue aside. For a more robust Rust implementation, see my merge request &lt;a href=&quot;https://github.com/pola-rs/polars/pull/4636&quot;&gt;here&lt;/a&gt;.&lt;/p&gt;</content><author><name>Matteo Santamaria</name></author><category term="python" /><category term="statistics" /><summary type="html">Back in August, I started contributing to polars, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks here). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting the exponentially-weighted variance that polars computes differs significantly from the one pandas produces. Intrigued, I began looking for the source of the disparity.</summary></entry></feed>

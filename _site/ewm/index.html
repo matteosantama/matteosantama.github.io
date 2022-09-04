@@ -230,7 +230,7 @@
 
 \[\mu_{j + 1} = \frac{1}{W_{j + 1}} \left[  \sum_{i=0}^{j} w_i^{(j + 1)} x_i + w_{j + 1}^{(j + 1)} x_{j + 1} \right]\]
 
-<p>I have shown that for both adjusted an unadjusted variants,</p>
+<p>I have shown that for both adjusted and unadjusted variants</p>
 
 \[w_{i}^{(j + 1)} = (1 - \alpha) w_{i}^{(j)} : i \leq j\]
 
@@ -245,7 +245,7 @@
 
 \[W_{j + 1} = \sum_{i=0}^j w_i^{j+1} + w_{j + 1}^{(j + 1)} = (1 - \alpha) W_{j} + w_{j + 1}^{(j + 1)}\]
 
-<p>(although it is worth reminding the reader that in the unadjusted case this computation is strictly unnecessary as the weights always sum to \(1\)). Lastly, we derive an important important identity:</p>
+<p>(although it is worth reminding the reader that in the unadjusted case this computation is strictly unnecessary as the weights always sum to \(1\)). Lastly, we derive an important identity:</p>
 
 \[\sum_{i = 0}^j w_i^{(j + 1)} x_i =\left( W_{j + 1} - w_{j + 1}^{(j + 1)} \right) \mu_j\]
 

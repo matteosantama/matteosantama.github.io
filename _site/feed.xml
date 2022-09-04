@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.2.2">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2022-09-03T17:32:58-07:00</updated><id>http://localhost:4000/feed.xml</id><title type="html">matteosantama</title><subtitle>A place for my thoughts</subtitle><author><name>Matteo Santamaria</name></author><entry><title type="html">A practical exponentially-weighted mean/variance algorithm</title><link href="http://localhost:4000/ewm/" rel="alternate" type="text/html" title="A practical exponentially-weighted mean/variance algorithm" /><published>2022-09-03T00:00:00-07:00</published><updated>2022-09-03T00:00:00-07:00</updated><id>http://localhost:4000/ewm</id><content type="html" xml:base="http://localhost:4000/ewm/">&lt;p&gt;Back in August, I started contributing to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt;, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks &lt;a href=&quot;https://www.pola.rs/benchmarks.html&quot;&gt;here&lt;/a&gt;). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting the exponentially-weighted variance that &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; computes differs significantly from the one &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pandas&lt;/code&gt; produces. Intrigued, I began looking for the source of the disparity.&lt;/p&gt;
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.2.2">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2022-09-03T18:16:23-07:00</updated><id>http://localhost:4000/feed.xml</id><title type="html">matteosantama</title><subtitle>A place for my thoughts</subtitle><author><name>Matteo Santamaria</name></author><entry><title type="html">A practical exponentially-weighted mean/variance algorithm</title><link href="http://localhost:4000/ewm/" rel="alternate" type="text/html" title="A practical exponentially-weighted mean/variance algorithm" /><published>2022-09-03T00:00:00-07:00</published><updated>2022-09-03T00:00:00-07:00</updated><id>http://localhost:4000/ewm</id><content type="html" xml:base="http://localhost:4000/ewm/">&lt;p&gt;Back in August, I started contributing to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt;, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks &lt;a href=&quot;https://www.pola.rs/benchmarks.html&quot;&gt;here&lt;/a&gt;). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting an error with the exponentially-weighted variance computation – the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; result differed significantly from what &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pandas&lt;/code&gt; produced. Intrigued, I began looking for the source of the disparity.&lt;/p&gt;
 
 &lt;h2 id=&quot;the-diagnosis&quot;&gt;The diagnosis&lt;/h2&gt;
 
@@ -20,7 +20,7 @@
 &lt;span class=&quot;n&quot;&gt;dtype&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;float64&lt;/span&gt;
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
 
-&lt;p&gt;Looking more closely at the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pandas&lt;/code&gt; function signatures, I noticed that &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; lacked a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;bias&lt;/code&gt; parameter (ignore the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;adjust&lt;/code&gt; parameter for now, we will get to that). And indeed, this was the problem!&lt;/p&gt;
+&lt;p&gt;Looking closer at the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pandas&lt;/code&gt; function signatures, I noticed a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;bias&lt;/code&gt; parameter was notably absent from the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; implemenation (ignore the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;adjust&lt;/code&gt; parameter for now, we will get to that shortly). And indeed, this was the problem!&lt;/p&gt;
 
 &lt;div class=&quot;language-python highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;pd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Series&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;([&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;1.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;2.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;3.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ewm&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;0.5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;adjust&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;False&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;var&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;bias&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;False&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
 &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;    &lt;span class=&quot;n&quot;&gt;NaN&lt;/span&gt;
@@ -125,7 +125,7 @@
 
 &lt;p&gt;When computed this way, \(\mu_j\) is called the “adjusted” exponentially-weighted mean.&lt;/p&gt;
 
-&lt;h3 id=&quot;an-incremental-algorithm&quot;&gt;An incremental algorithm&lt;/h3&gt;
+&lt;h3 id=&quot;an-incremental-update&quot;&gt;An incremental update&lt;/h3&gt;
 
 &lt;p&gt;With these defintions in hand, we can again consider the equation&lt;/p&gt;
 
@@ -166,7 +166,7 @@
 
 \[\sigma_j^2 = \frac{1}{W_j} \sum_{i=0}^j w_i^{(j)} \left( x_i - \mu_j \right)^2\]
 
-&lt;h2 id=&quot;an-incremental-algorithm-1&quot;&gt;An incremental algorithm&lt;/h2&gt;
+&lt;h2 id=&quot;an-incremental-update-1&quot;&gt;An incremental update&lt;/h2&gt;
 
 &lt;p&gt;To design an efficient algorithm for computing \(\sigma_j^2\), I start with some useful, easily derived, identities&lt;/p&gt;
 
@@ -216,7 +216,7 @@
 
 \[\implies \mathbf{E} \left[ \left( x_i - \mu_j \right)^2 \right] = \sigma^2 - 2 \frac{w_i^{(j)}}{W_j} \sigma^2 + \frac{\theta_j}{W_j^2} \sigma^2\]
 
-&lt;p&gt;In order to produce an unbiased estimate of \(\sigma^2\), we must therefore compute&lt;/p&gt;
+&lt;p&gt;In order to produce an unbiased estimate of \(\sigma^2\), we must therefore multiply our estimate by a bias correction term. In particular, we must compute&lt;/p&gt;
 
 \[\left( 1 - \frac{\theta_j}{W_j^2} \right)^{-1} \sigma_j^2\]
 
@@ -252,7 +252,7 @@
         &lt;span class=&quot;n&quot;&gt;mean&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;mean&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;diff&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ratio&lt;/span&gt;
         &lt;span class=&quot;n&quot;&gt;var&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ratio&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;var&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ratio&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;diff&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;**&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
         
-        &lt;span class=&quot;c1&quot;&gt;# NOTE: the i == 0 condition prevents a ZeroDivisionError
+        &lt;span class=&quot;c1&quot;&gt;# NOTE: the `i == 0` condition prevents a ZeroDivisionError
 &lt;/span&gt;        &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;bias&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;or&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
             &lt;span class=&quot;n&quot;&gt;bias_correction&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;
         &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
@@ -264,4 +264,18 @@
     &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt;
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
 
-&lt;p&gt;Note that both &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pandas&lt;/code&gt; provide options for dealing with missing values; this simple implementation puts that issue aside. For a more robust Rust implementation, see my merge request &lt;a href=&quot;https://github.com/pola-rs/polars/pull/4636&quot;&gt;here&lt;/a&gt;.&lt;/p&gt;</content><author><name>Matteo Santamaria</name></author><category term="python" /><category term="statistics" /><summary type="html">Back in August, I started contributing to polars, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks here). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting the exponentially-weighted variance that polars computes differs significantly from the one pandas produces. Intrigued, I began looking for the source of the disparity.</summary></entry></feed>
+&lt;p&gt;Note that both &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pandas&lt;/code&gt; provide options for dealing with missing values; this simple implementation puts that issue aside. For a more robust Rust implementation, see my merge request &lt;a href=&quot;https://github.com/pola-rs/polars/pull/4636&quot;&gt;here&lt;/a&gt;.&lt;/p&gt;
+
+&lt;h4 id=&quot;references&quot;&gt;References&lt;/h4&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;
+    &lt;p&gt;Welford, B. P. “Note on a Method for Calculating Corrected Sums of Squares and Products.” Technometrics, vol. 4, no. 3, 1962, pp. 419–20. JSTOR, &lt;a href=&quot;https://doi.org/10.2307/1266577&quot;&gt;https://doi.org/10.2307/1266577&lt;/a&gt;. Accessed 31 Aug. 2022.&lt;/p&gt;
+  &lt;/li&gt;
+  &lt;li&gt;
+    &lt;p&gt;Hunter, J. S. (1986). The Exponentially Weighted Moving Average. Journal of Quality Technology, 18(4), 203–210. &lt;a href=&quot;https://doi.org/10.1080/00224065.1986.11979014&quot;&gt;https://doi.org/10.1080/00224065.1986.11979014&lt;/a&gt;&lt;/p&gt;
+  &lt;/li&gt;
+  &lt;li&gt;
+    &lt;p&gt;Wikipedia contributors. (2022, September 2). Weighted arithmetic mean. In Wikipedia, The Free Encyclopedia. Retrieved 00:40, September 4, 2022, from &lt;a href=&quot;https://en.wikipedia.org/w/index.php?title=Weighted_arithmetic_mean&amp;amp;oldid=1108027383&quot;&gt;https://en.wikipedia.org/w/index.php?title=Weighted_arithmetic_mean&amp;amp;oldid=1108027383&lt;/a&gt;&lt;/p&gt;
+  &lt;/li&gt;
+&lt;/ul&gt;</content><author><name>Matteo Santamaria</name></author><category term="python" /><category term="statistics" /><summary type="html">Back in August, I started contributing to polars, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks here). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting an error with the exponentially-weighted variance computation – the polars result differed significantly from what pandas produced. Intrigued, I began looking for the source of the disparity.</summary></entry></feed>

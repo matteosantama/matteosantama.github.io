@@ -7,8 +7,8 @@
 <meta property="og:title" content="A practical exponentially-weighted mean/variance algorithm" />
 <meta name="author" content="Matteo Santamaria" />
 <meta property="og:locale" content="en_US" />
-<meta name="description" content="Back in August, I started contributing to polars, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks here). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting the exponentially-weighted variance that polars computes differs significantly from the one pandas produces. Intrigued, I began looking for the source of the disparity." />
-<meta property="og:description" content="Back in August, I started contributing to polars, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks here). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting the exponentially-weighted variance that polars computes differs significantly from the one pandas produces. Intrigued, I began looking for the source of the disparity." />
+<meta name="description" content="Back in August, I started contributing to polars, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks here). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting an error with the exponentially-weighted variance computation – the polars result differed significantly from what pandas produced. Intrigued, I began looking for the source of the disparity." />
+<meta property="og:description" content="Back in August, I started contributing to polars, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks here). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting an error with the exponentially-weighted variance computation – the polars result differed significantly from what pandas produced. Intrigued, I began looking for the source of the disparity." />
 <link rel="canonical" href="http://localhost:4000/ewm/" />
 <meta property="og:url" content="http://localhost:4000/ewm/" />
 <meta property="og:site_name" content="matteosantama" />
@@ -17,7 +17,7 @@
 <meta name="twitter:card" content="summary" />
 <meta property="twitter:title" content="A practical exponentially-weighted mean/variance algorithm" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Matteo Santamaria"},"dateModified":"2022-09-03T00:00:00-07:00","datePublished":"2022-09-03T00:00:00-07:00","description":"Back in August, I started contributing to polars, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks here). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting the exponentially-weighted variance that polars computes differs significantly from the one pandas produces. Intrigued, I began looking for the source of the disparity.","headline":"A practical exponentially-weighted mean/variance algorithm","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/ewm/"},"url":"http://localhost:4000/ewm/"}</script>
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Matteo Santamaria"},"dateModified":"2022-09-03T00:00:00-07:00","datePublished":"2022-09-03T00:00:00-07:00","description":"Back in August, I started contributing to polars, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks here). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting an error with the exponentially-weighted variance computation – the polars result differed significantly from what pandas produced. Intrigued, I began looking for the source of the disparity.","headline":"A practical exponentially-weighted mean/variance algorithm","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/ewm/"},"url":"http://localhost:4000/ewm/"}</script>
 <!-- End Jekyll SEO tag -->
 
     <meta charset="utf-8">
@@ -25,7 +25,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 
-<meta property="og:description" content="Back in August, I started contributing to polars, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks here). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting the exponentially-weighted variance that polars computes differs significantly from the one pandas produces. Intrigued, I began looking for the source of the disparity.
+<meta property="og:description" content="Back in August, I started contributing to polars, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks here). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting an error with the exponentially-weighted variance computation – the polars result differed significantly from what pandas produced. Intrigued, I began looking for the source of the disparity.
 " />
 
 <meta name="author" content="matteosantama" />
@@ -97,7 +97,7 @@
   </div>
 
   <div class="entry">
-    <p>Back in August, I started contributing to <code class="language-plaintext highlighter-rouge">polars</code>, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks <a href="https://www.pola.rs/benchmarks.html">here</a>). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting the exponentially-weighted variance that <code class="language-plaintext highlighter-rouge">polars</code> computes differs significantly from the one <code class="language-plaintext highlighter-rouge">pandas</code> produces. Intrigued, I began looking for the source of the disparity.</p>
+    <p>Back in August, I started contributing to <code class="language-plaintext highlighter-rouge">polars</code>, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks <a href="https://www.pola.rs/benchmarks.html">here</a>). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting an error with the exponentially-weighted variance computation – the <code class="language-plaintext highlighter-rouge">polars</code> result differed significantly from what <code class="language-plaintext highlighter-rouge">pandas</code> produced. Intrigued, I began looking for the source of the disparity.</p>
 
 <h2 id="the-diagnosis">The diagnosis</h2>
 
@@ -119,7 +119,7 @@
 <span class="n">dtype</span><span class="p">:</span> <span class="n">float64</span>
 </code></pre></div></div>
 
-<p>Looking more closely at the <code class="language-plaintext highlighter-rouge">polars</code> and <code class="language-plaintext highlighter-rouge">pandas</code> function signatures, I noticed that <code class="language-plaintext highlighter-rouge">polars</code> lacked a <code class="language-plaintext highlighter-rouge">bias</code> parameter (ignore the <code class="language-plaintext highlighter-rouge">adjust</code> parameter for now, we will get to that). And indeed, this was the problem!</p>
+<p>Looking closer at the <code class="language-plaintext highlighter-rouge">polars</code> and <code class="language-plaintext highlighter-rouge">pandas</code> function signatures, I noticed a <code class="language-plaintext highlighter-rouge">bias</code> parameter was notably absent from the <code class="language-plaintext highlighter-rouge">polars</code> implemenation (ignore the <code class="language-plaintext highlighter-rouge">adjust</code> parameter for now, we will get to that shortly). And indeed, this was the problem!</p>
 
 <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;&gt;&gt;</span> <span class="n">pd</span><span class="p">.</span><span class="n">Series</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">3.</span><span class="p">]).</span><span class="n">ewm</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">adjust</span><span class="o">=</span><span class="bp">False</span><span class="p">).</span><span class="n">var</span><span class="p">(</span><span class="n">bias</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
 <span class="mi">0</span>    <span class="n">NaN</span>
@@ -224,7 +224,7 @@
 
 <p>When computed this way, \(\mu_j\) is called the “adjusted” exponentially-weighted mean.</p>
 
-<h3 id="an-incremental-algorithm">An incremental algorithm</h3>
+<h3 id="an-incremental-update">An incremental update</h3>
 
 <p>With these defintions in hand, we can again consider the equation</p>
 
@@ -265,7 +265,7 @@
 
 \[\sigma_j^2 = \frac{1}{W_j} \sum_{i=0}^j w_i^{(j)} \left( x_i - \mu_j \right)^2\]
 
-<h2 id="an-incremental-algorithm-1">An incremental algorithm</h2>
+<h2 id="an-incremental-update-1">An incremental update</h2>
 
 <p>To design an efficient algorithm for computing \(\sigma_j^2\), I start with some useful, easily derived, identities</p>
 
@@ -315,7 +315,7 @@
 
 \[\implies \mathbf{E} \left[ \left( x_i - \mu_j \right)^2 \right] = \sigma^2 - 2 \frac{w_i^{(j)}}{W_j} \sigma^2 + \frac{\theta_j}{W_j^2} \sigma^2\]
 
-<p>In order to produce an unbiased estimate of \(\sigma^2\), we must therefore compute</p>
+<p>In order to produce an unbiased estimate of \(\sigma^2\), we must therefore multiply our estimate by a bias correction term. In particular, we must compute</p>
 
 \[\left( 1 - \frac{\theta_j}{W_j^2} \right)^{-1} \sigma_j^2\]
 
@@ -351,7 +351,7 @@
         <span class="n">mean</span> <span class="o">=</span> <span class="n">mean</span> <span class="o">+</span> <span class="n">diff</span> <span class="o">*</span> <span class="n">ratio</span>
         <span class="n">var</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">ratio</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">var</span> <span class="o">+</span> <span class="n">ratio</span> <span class="o">*</span> <span class="n">diff</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
         
-        <span class="c1"># NOTE: the i == 0 condition prevents a ZeroDivisionError
+        <span class="c1"># NOTE: the `i == 0` condition prevents a ZeroDivisionError
 </span>        <span class="k">if</span> <span class="n">bias</span> <span class="ow">or</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
             <span class="n">bias_correction</span> <span class="o">=</span> <span class="mi">1</span>
         <span class="k">else</span><span class="p">:</span>
@@ -364,6 +364,20 @@
 </code></pre></div></div>
 
 <p>Note that both <code class="language-plaintext highlighter-rouge">polars</code> and <code class="language-plaintext highlighter-rouge">pandas</code> provide options for dealing with missing values; this simple implementation puts that issue aside. For a more robust Rust implementation, see my merge request <a href="https://github.com/pola-rs/polars/pull/4636">here</a>.</p>
+
+<h4 id="references">References</h4>
+
+<ul>
+  <li>
+    <p>Welford, B. P. “Note on a Method for Calculating Corrected Sums of Squares and Products.” Technometrics, vol. 4, no. 3, 1962, pp. 419–20. JSTOR, <a href="https://doi.org/10.2307/1266577">https://doi.org/10.2307/1266577</a>. Accessed 31 Aug. 2022.</p>
+  </li>
+  <li>
+    <p>Hunter, J. S. (1986). The Exponentially Weighted Moving Average. Journal of Quality Technology, 18(4), 203–210. <a href="https://doi.org/10.1080/00224065.1986.11979014">https://doi.org/10.1080/00224065.1986.11979014</a></p>
+  </li>
+  <li>
+    <p>Wikipedia contributors. (2022, September 2). Weighted arithmetic mean. In Wikipedia, The Free Encyclopedia. Retrieved 00:40, September 4, 2022, from <a href="https://en.wikipedia.org/w/index.php?title=Weighted_arithmetic_mean&amp;oldid=1108027383">https://en.wikipedia.org/w/index.php?title=Weighted_arithmetic_mean&amp;oldid=1108027383</a></p>
+  </li>
+</ul>
 
   </div>
 

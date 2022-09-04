@@ -127,7 +127,7 @@
 <span class="mi">2</span>    <span class="mf">1.1</span>
 <span class="n">dtype</span><span class="p">:</span> <span class="n">float64</span>
 
-<span class="o">&gt;&gt;&gt;</span> <span class="n">pd</span><span class="p">.</span><span class="n">Series</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">3.</span><span class="p">]).</span><span class="n">ewm</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">).</span><span class="n">var</span><span class="p">(</span><span class="n">bias</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">pd</span><span class="p">.</span><span class="n">Series</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">3.</span><span class="p">]).</span><span class="n">ewm</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">adjust</span><span class="o">=</span><span class="bp">False</span><span class="p">).</span><span class="n">var</span><span class="p">(</span><span class="n">bias</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
 <span class="mi">0</span>    <span class="mf">0.0000</span>
 <span class="mi">1</span>    <span class="mf">0.2500</span>
 <span class="mi">2</span>    <span class="mf">0.6875</span>

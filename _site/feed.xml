@@ -1,8 +1,8 @@
-<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.2.2">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2022-09-03T19:00:53-07:00</updated><id>http://localhost:4000/feed.xml</id><title type="html">matteosantama</title><subtitle>A place for my thoughts</subtitle><author><name>Matteo Santamaria</name></author><entry><title type="html">A practical exponentially-weighted mean/variance algorithm</title><link href="http://localhost:4000/ewm/" rel="alternate" type="text/html" title="A practical exponentially-weighted mean/variance algorithm" /><published>2022-09-03T00:00:00-07:00</published><updated>2022-09-03T00:00:00-07:00</updated><id>http://localhost:4000/ewm</id><content type="html" xml:base="http://localhost:4000/ewm/">&lt;p&gt;Back in August, I started contributing to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt;, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks &lt;a href=&quot;https://www.pola.rs/benchmarks.html&quot;&gt;here&lt;/a&gt;). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting an error with the exponentially-weighted variance computation – the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; result differed significantly from what &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pandas&lt;/code&gt; produced. Intrigued, I began looking for the source of the disparity.&lt;/p&gt;
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.2.2">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2022-09-05T07:15:04-07:00</updated><id>http://localhost:4000/feed.xml</id><title type="html">matteosantama</title><subtitle>A place for my thoughts</subtitle><author><name>Matteo Santamaria</name></author><entry><title type="html">A practical exponentially-weighted mean/variance algorithm</title><link href="http://localhost:4000/ewm/" rel="alternate" type="text/html" title="A practical exponentially-weighted mean/variance algorithm" /><published>2022-09-03T00:00:00-07:00</published><updated>2022-09-03T00:00:00-07:00</updated><id>http://localhost:4000/ewm</id><content type="html" xml:base="http://localhost:4000/ewm/">&lt;p&gt;Back in August, I started contributing to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt;, an exciting new dataframe library that is modern, memory-efficient, and lightning FAST (check out the benchmarks &lt;a href=&quot;https://www.pola.rs/benchmarks.html&quot;&gt;here&lt;/a&gt;). It is under active development so bugs are identified (and resolved) at an incredible pace. One morning, I noticed a user reporting an error with the exponentially-weighted variance computation – the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;polars&lt;/code&gt; result differed significantly from what &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pandas&lt;/code&gt; produced. Intrigued, I began looking for the source of the disparity.&lt;/p&gt;
 
 &lt;h2 id=&quot;the-diagnosis&quot;&gt;The diagnosis&lt;/h2&gt;
 
-&lt;p&gt;I first replicated the user’s issue on my machine&lt;/p&gt;
+&lt;p&gt;I first replicated the user’s issue on my own machine&lt;/p&gt;
 
 &lt;div class=&quot;language-python highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;pl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Series&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;([&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;1.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;2.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;3.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ewm_var&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;alpha&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;0.5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;adjust&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;False&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
 &lt;span class=&quot;n&quot;&gt;shape&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,)&lt;/span&gt;
@@ -73,7 +73,7 @@
 
 &lt;p&gt;where I’ve defined \(W_j := \sum_i w_i^{(j)}\).&lt;/p&gt;
 
-&lt;p&gt;Naively computing a \(j\)-term sum at each step is too costly, especially if we can avoid it. In order to efficiently compute all the \(\mu_j\) in an online fashion, I will derive a recurrence relation that suggests an \(O(n)\) algorithm. From the definition of \(\mu_j\), it is readily apparent that&lt;/p&gt;
+&lt;p&gt;But naively computing a \(j\)-term sum at each step is far too costly. Instead, I will derive a recurrence relation that allows us to compute \(\mu_j\) in an online fashion. From the definition of \(\mu_j\), it is readily apparent that&lt;/p&gt;
 
 \[W_{j + 1} \mu_{j + 1} = \sum_{i=0}^{j + 1} w_i^{(j + 1)} x_i = \sum_{i=0}^{j} w_i^{(j + 1)} x_i + w_{j + 1}^{(j + 1)} x_{j + 1}\]
 
@@ -160,13 +160,13 @@
 
 &lt;p&gt;The general formula for a weighted variance \(\sigma^2\) is given by&lt;/p&gt;
 
-\[\sigma^2 = \frac{1}{W_n} \sum_{i=0}^n w_i \left( x_i - \mu \right)^2\]
+\[\sigma^2 := \frac{1}{W_n} \sum_{i=0}^n w_i \left( x_i - \mu \right)^2\]
 
 &lt;p&gt;as we did with the mean, we can compute a weighted variance at each \(j \in \{0, 1, \dots, n\}\) by&lt;/p&gt;
 
-\[\sigma_j^2 = \frac{1}{W_j} \sum_{i=0}^j w_i^{(j)} \left( x_i - \mu_j \right)^2\]
+\[\sigma_j^2 := \frac{1}{W_j} \sum_{i=0}^j w_i^{(j)} \left( x_i - \mu_j \right)^2\]
 
-&lt;h2 id=&quot;an-incremental-update-1&quot;&gt;An incremental update&lt;/h2&gt;
+&lt;h3 id=&quot;an-incremental-update-1&quot;&gt;An incremental update&lt;/h3&gt;
 
 &lt;p&gt;To design an efficient algorithm for computing \(\sigma_j^2\), I start with some useful, easily derived, identities&lt;/p&gt;
 
@@ -178,11 +178,11 @@
 
 &lt;p&gt;We are thus interested in solving&lt;/p&gt;
 
-\[\sigma_j^2 = \frac{1}{W_j} \underbrace{\sum_{i=0}^{j-1} w_i^{(j)} \left[ ( x_i - \mu_{j - 1} ) - \frac{w_j^{(j)}}{W_j} \left( x_j - \mu_{j-1} \right) \right]^2}_\theta + \frac{ w_j^{(j)} }{W_j} \left[ \frac{W_j - w_j^j}{W_j} \left( x_j - \mu_{j-1} \right)  \right]^2\]
+\[\sigma_j^2 = \frac{1}{W_j} \underbrace{\sum_{i=0}^{j-1} w_i^{(j)} \left[ ( x_i - \mu_{j - 1} ) - \frac{w_j^{(j)}}{W_j} \left( x_j - \mu_{j-1} \right) \right]^2}_{X} + \frac{ w_j^{(j)} }{W_j} \left[ \frac{W_j - w_j^j}{W_j} \left( x_j - \mu_{j-1} \right)  \right]^2\]
 
-&lt;p&gt;The section I’ve indentified as \(\theta\) can be expressed as&lt;/p&gt;
+&lt;p&gt;The section I’ve identified as \(X\) can be expressed as&lt;/p&gt;
 
-\[\theta = \sum_{i=0}^{j-1}w_i^{(j)} \left[ \left( x_i - \mu_{j-1} \right)^2 - 2 \frac{w_j^{(j)}}{W_j} \left( x_i - \mu_{j-1} \right) \left( x_j - \mu_{j - 1} \right) + \left( \frac{w_j^{(j)}}{W_j} \right)^2 \left( x_j - \mu_{j-1} \right)^2  \right]\]
+\[X = \sum_{i=0}^{j-1}w_i^{(j)} \left[ \left( x_i - \mu_{j-1} \right)^2 - 2 \frac{w_j^{(j)}}{W_j} \left( x_i - \mu_{j-1} \right) \left( x_j - \mu_{j - 1} \right) + \left( \frac{w_j^{(j)}}{W_j} \right)^2 \left( x_j - \mu_{j-1} \right)^2  \right]\]
 
 &lt;p&gt;If you consider each of these terms separately, you will find&lt;/p&gt;
 
@@ -196,7 +196,7 @@
 
 \[\sigma_j^2 = \left( 1 - \frac{w_j^{(j)}}{W_j} \right) \left[ \sigma_{j-1}^2 + \frac{w_j^{(j)}}{W_j} \left( x_j - \mu_{j-1} \right)^2 \right]\]
 
-&lt;p&gt;This is hugely important, as it suggests that at any step \(j\) we don’t have to traverse all prior observations to compute \(\mu_j\).&lt;/p&gt;
+&lt;p&gt;This is hugely important – it means at each step \(j\) we don’t have to traverse all prior observations to compute \((x_i - \mu_j)^2\). It therefore suggests an \(O(n)\) algorithm is possible.&lt;/p&gt;
 
 &lt;h3 id=&quot;biased-ness&quot;&gt;Biased-ness&lt;/h3&gt;
 

@@ -103,7 +103,7 @@
 
 <h2 id="the-diagnosis">The diagnosis</h2>
 
-<p>I first replicated the user’s issue on my machine</p>
+<p>I first replicated the user’s issue on my own machine</p>
 
 <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;&gt;&gt;</span> <span class="n">pl</span><span class="p">.</span><span class="n">Series</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">3.</span><span class="p">]).</span><span class="n">ewm_var</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">adjust</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
 <span class="n">shape</span><span class="p">:</span> <span class="p">(</span><span class="mi">3</span><span class="p">,)</span>
@@ -174,7 +174,7 @@
 
 <p>where I’ve defined \(W_j := \sum_i w_i^{(j)}\).</p>
 
-<p>Naively computing a \(j\)-term sum at each step is too costly, especially if we can avoid it. In order to efficiently compute all the \(\mu_j\) in an online fashion, I will derive a recurrence relation that suggests an \(O(n)\) algorithm. From the definition of \(\mu_j\), it is readily apparent that</p>
+<p>But naively computing a \(j\)-term sum at each step is far too costly. Instead, I will derive a recurrence relation that allows us to compute \(\mu_j\) in an online fashion. From the definition of \(\mu_j\), it is readily apparent that</p>
 
 \[W_{j + 1} \mu_{j + 1} = \sum_{i=0}^{j + 1} w_i^{(j + 1)} x_i = \sum_{i=0}^{j} w_i^{(j + 1)} x_i + w_{j + 1}^{(j + 1)} x_{j + 1}\]
 
@@ -261,13 +261,13 @@
 
 <p>The general formula for a weighted variance \(\sigma^2\) is given by</p>
 
-\[\sigma^2 = \frac{1}{W_n} \sum_{i=0}^n w_i \left( x_i - \mu \right)^2\]
+\[\sigma^2 := \frac{1}{W_n} \sum_{i=0}^n w_i \left( x_i - \mu \right)^2\]
 
 <p>as we did with the mean, we can compute a weighted variance at each \(j \in \{0, 1, \dots, n\}\) by</p>
 
-\[\sigma_j^2 = \frac{1}{W_j} \sum_{i=0}^j w_i^{(j)} \left( x_i - \mu_j \right)^2\]
+\[\sigma_j^2 := \frac{1}{W_j} \sum_{i=0}^j w_i^{(j)} \left( x_i - \mu_j \right)^2\]
 
-<h2 id="an-incremental-update-1">An incremental update</h2>
+<h3 id="an-incremental-update-1">An incremental update</h3>
 
 <p>To design an efficient algorithm for computing \(\sigma_j^2\), I start with some useful, easily derived, identities</p>
 
@@ -279,11 +279,11 @@
 
 <p>We are thus interested in solving</p>
 
-\[\sigma_j^2 = \frac{1}{W_j} \underbrace{\sum_{i=0}^{j-1} w_i^{(j)} \left[ ( x_i - \mu_{j - 1} ) - \frac{w_j^{(j)}}{W_j} \left( x_j - \mu_{j-1} \right) \right]^2}_\theta + \frac{ w_j^{(j)} }{W_j} \left[ \frac{W_j - w_j^j}{W_j} \left( x_j - \mu_{j-1} \right)  \right]^2\]
+\[\sigma_j^2 = \frac{1}{W_j} \underbrace{\sum_{i=0}^{j-1} w_i^{(j)} \left[ ( x_i - \mu_{j - 1} ) - \frac{w_j^{(j)}}{W_j} \left( x_j - \mu_{j-1} \right) \right]^2}_{X} + \frac{ w_j^{(j)} }{W_j} \left[ \frac{W_j - w_j^j}{W_j} \left( x_j - \mu_{j-1} \right)  \right]^2\]
 
-<p>The section I’ve indentified as \(\theta\) can be expressed as</p>
+<p>The section I’ve identified as \(X\) can be expressed as</p>
 
-\[\theta = \sum_{i=0}^{j-1}w_i^{(j)} \left[ \left( x_i - \mu_{j-1} \right)^2 - 2 \frac{w_j^{(j)}}{W_j} \left( x_i - \mu_{j-1} \right) \left( x_j - \mu_{j - 1} \right) + \left( \frac{w_j^{(j)}}{W_j} \right)^2 \left( x_j - \mu_{j-1} \right)^2  \right]\]
+\[X = \sum_{i=0}^{j-1}w_i^{(j)} \left[ \left( x_i - \mu_{j-1} \right)^2 - 2 \frac{w_j^{(j)}}{W_j} \left( x_i - \mu_{j-1} \right) \left( x_j - \mu_{j - 1} \right) + \left( \frac{w_j^{(j)}}{W_j} \right)^2 \left( x_j - \mu_{j-1} \right)^2  \right]\]
 
 <p>If you consider each of these terms separately, you will find</p>
 
@@ -297,7 +297,7 @@
 
 \[\sigma_j^2 = \left( 1 - \frac{w_j^{(j)}}{W_j} \right) \left[ \sigma_{j-1}^2 + \frac{w_j^{(j)}}{W_j} \left( x_j - \mu_{j-1} \right)^2 \right]\]
 
-<p>This is hugely important, as it suggests that at any step \(j\) we don’t have to traverse all prior observations to compute \(\mu_j\).</p>
+<p>This is hugely important – it means at each step \(j\) we don’t have to traverse all prior observations to compute \((x_i - \mu_j)^2\). It therefore suggests an \(O(n)\) algorithm is possible.</p>
 
 <h3 id="biased-ness">Biased-ness</h3>
 

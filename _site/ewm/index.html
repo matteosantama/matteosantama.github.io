@@ -247,11 +247,11 @@
 
 \[W_{j + 1} = \sum_{i=0}^j w_i^{j+1} + w_{j + 1}^{(j + 1)} = (1 - \alpha) W_{j} + w_{j + 1}^{(j + 1)}\]
 
-<p>(although it is worth reminding the reader that in the unadjusted case this computation is strictly unnecessary as the weights always sum to \(1\)). Lastly, we derive an important identity:</p>
+<p>(although it is worth reminding the reader that in the unadjusted case this computation is strictly unnecessary as the weights always sum to \(1\)). Lastly, I note an important identity</p>
 
 \[\sum_{i = 0}^j w_i^{(j + 1)} x_i =\left( W_{j + 1} - w_{j + 1}^{(j + 1)} \right) \mu_j\]
 
-<p>Putting the various identities together and working through the algebra, I am now able to write down the one-step recurrence relation</p>
+<p>Putting the various pieces together and working through the algebra, I am now able to write down the one-step recurrence relation</p>
 
 \[\mu_{j + 1} = \frac{w_{j + 1}^{(j+1)}}{W_{j+1}} \left( x_{j + 1} - \mu_j \right) + \mu_j\]
 
@@ -293,7 +293,7 @@
 
 \[\sum_{i=0}^{j-1} w_i^{(j)} \left( \frac{w_j^{(j)}}{W_j} \right)^2 \left( x_j - \mu_{j-1} \right)^2 = \left( \frac{w_j^{(j)}}{W_j} \right)^2 \left( x_j - \mu_{j-1} \right)^2 \left( W_j - w_j^{(j)} \right)\]
 
-<p>which, after working through the math, implies</p>
+<p>which, after some simplification, implies</p>
 
 \[\sigma_j^2 = \left( 1 - \frac{w_j^{(j)}}{W_j} \right) \left[ \sigma_{j-1}^2 + \frac{w_j^{(j)}}{W_j} \left( x_j - \mu_{j-1} \right)^2 \right]\]
 
